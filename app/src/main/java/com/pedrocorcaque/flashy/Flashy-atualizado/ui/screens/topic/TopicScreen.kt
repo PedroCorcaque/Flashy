@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.sp
 import com.pedrocorcaque.flashy.data.model.Flashcard
 import com.pedrocorcaque.flashy.data.model.Subtopic
 import com.pedrocorcaque.flashy.ui.components.ConfirmDeleteDialog
+import com.pedrocorcaque.flashy.ui.components.OptionSwitchRow
 import com.pedrocorcaque.flashy.ui.screens.addedit.FlashyTextField
 import com.pedrocorcaque.flashy.ui.theme.*
 
@@ -36,7 +37,7 @@ fun TopicScreen(
     onEditTopicClick: () -> Unit,
     onAddCardClick: (String?) -> Unit,
     onEditCardClick: (String) -> Unit,
-    onStudyClick: (Boolean, String?) -> Unit
+    onStudyClick: (Boolean, String?, Boolean) -> Unit
 ) {
     val topic by viewModel.topic.collectAsState()
     val cards by viewModel.cards.collectAsState()
@@ -49,6 +50,7 @@ fun TopicScreen(
     val cardCount = topic?.cardCount ?: 0
     
     var isInverted by remember { mutableStateOf(false) }
+    var isShuffle by remember { mutableStateOf(false) }
     var showAddSubtopic by remember { mutableStateOf(false) }
     var showEditSubtopic by remember { mutableStateOf(false) }
     var showDeleteSubtopic by remember { mutableStateOf(false) }
@@ -105,7 +107,12 @@ fun TopicScreen(
                 .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            TopicHeader(topicName, cardCount, topic?.colorArgb?.let { Color(it) } ?: PrimaryPurple)
+            TopicHeader(
+                name = topicName,
+                count = cardCount,
+                color = topic?.colorArgb?.let { Color(it) } ?: PrimaryPurple,
+                icon = TopicIcons.resolve(topic?.iconName, topicName)
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -210,8 +217,14 @@ fun TopicScreen(
                 )
             }
             
+            OptionSwitchRow(
+                text = "Modo aleatório",
+                checked = isShuffle,
+                onCheckedChange = { isShuffle = it }
+            )
+
             Button(
-                onClick = { onStudyClick(isInverted, selectedSubtopicId) },
+                onClick = { onStudyClick(isInverted, selectedSubtopicId, isShuffle) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                 shape = RoundedCornerShape(12.dp),
@@ -261,16 +274,16 @@ fun TopicScreen(
 }
 
 @Composable
-fun TopicHeader(name: String, count: Int, color: Color) {
+fun TopicHeader(name: String, count: Int, color: Color, icon: ImageVector) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(100.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(SurfaceColor),
+                .background(color.copy(alpha = 0.25f)),
             contentAlignment = Alignment.Center
         ) {
-            Text("🪐", fontSize = 60.sp)
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(56.dp))
         }
         
         Spacer(modifier = Modifier.height(16.dp))

@@ -23,6 +23,9 @@ interface FlashyDao {
     @Query("SELECT * FROM subtopics WHERE topicId = :topicId ORDER BY name COLLATE NOCASE")
     fun getSubtopicsForTopic(topicId: String): Flow<List<Subtopic>>
 
+    @Query("SELECT * FROM subtopics")
+    fun getAllSubtopics(): Flow<List<Subtopic>>
+
     @Query("SELECT * FROM subtopics WHERE id = :subtopicId")
     fun getSubtopicById(subtopicId: String): Flow<Subtopic?>
 

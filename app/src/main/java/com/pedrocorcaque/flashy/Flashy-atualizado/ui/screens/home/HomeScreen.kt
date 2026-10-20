@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pedrocorcaque.flashy.data.model.Topic
+import com.pedrocorcaque.flashy.ui.components.OptionSwitchRow
 import com.pedrocorcaque.flashy.ui.screens.flashcard.ALL_TOPICS_ID
 import com.pedrocorcaque.flashy.ui.theme.*
 
@@ -36,7 +37,7 @@ fun HomeScreen(
     onTopicClick: (String) -> Unit,
     onAddTopicClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onStudyClick: (String) -> Unit
+    onStudyClick: (String, Boolean) -> Unit
 ) {
     val topics by viewModel.uiState.collectAsState()
     var showStudyPicker by remember { mutableStateOf(false) }
@@ -81,9 +82,9 @@ fun HomeScreen(
                 StudyPickerDialog(
                     topics = topics,
                     onDismiss = { showStudyPicker = false },
-                    onSelect = { id ->
+                    onSelect = { id, shuffle ->
                         showStudyPicker = false
-                        onStudyClick(id)
+                        onStudyClick(id, shuffle)
                     }
                 )
             }
@@ -168,7 +169,7 @@ fun TopicItem(topic: Topic, onClick: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = getTopicIcon(topic.name),
+                    imageVector = TopicIcons.resolve(topic.iconName, topic.name),
                     contentDescription = null,
                     tint = topicColor,
                     modifier = Modifier.size(24.dp)
@@ -248,23 +249,15 @@ fun FlashyBottomBar(onStudyClick: () -> Unit) {
     }
 }
 
-private fun getTopicIcon(name: String): ImageVector {
-    return when (name) {
-        "Física" -> Icons.Default.Hub
-        "Química" -> Icons.Default.Science
-        "Biologia" -> Icons.Default.Eco
-        "Matemática" -> Icons.Default.Calculate
-        else -> Icons.Default.Book
-    }
-}
 
 @Composable
 private fun StudyPickerDialog(
     topics: List<Topic>,
     onDismiss: () -> Unit,
-    onSelect: (String) -> Unit
+    onSelect: (String, Boolean) -> Unit
 ) {
     val totalCards = topics.sumOf { it.cardCount }
+    var shuffle by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -276,22 +269,29 @@ private fun StudyPickerDialog(
             if (topics.isEmpty()) {
                 Text("Crie um tópico e adicione cards para começar.", color = TextGray)
             } else {
-                LazyColumn {
-                    item {
-                        StudyPickerRow(
-                            name = "Todos os tópicos",
-                            cardCount = totalCards,
-                            color = PrimaryPurple,
-                            onClick = { onSelect(ALL_TOPICS_ID) }
-                        )
-                    }
-                    items(topics) { topic ->
-                        StudyPickerRow(
-                            name = topic.name,
-                            cardCount = topic.cardCount,
-                            color = Color(topic.colorArgb),
-                            onClick = { onSelect(topic.id) }
-                        )
+                Column {
+                    OptionSwitchRow(
+                        text = "Modo aleatório",
+                        checked = shuffle,
+                        onCheckedChange = { shuffle = it }
+                    )
+                    LazyColumn {
+                        item {
+                            StudyPickerRow(
+                                name = "Todos os tópicos",
+                                cardCount = totalCards,
+                                color = PrimaryPurple,
+                                onClick = { onSelect(ALL_TOPICS_ID, shuffle) }
+                            )
+                        }
+                        items(topics) { topic ->
+                            StudyPickerRow(
+                                name = topic.name,
+                                cardCount = topic.cardCount,
+                                color = Color(topic.colorArgb),
+                                onClick = { onSelect(topic.id, shuffle) }
+                            )
+                        }
                     }
                 }
             }

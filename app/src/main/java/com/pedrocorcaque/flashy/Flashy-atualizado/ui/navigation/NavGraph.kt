@@ -31,9 +31,14 @@ sealed class Screen(val route: String) {
     object Topic : Screen("topic/{topicId}") {
         fun createRoute(topicId: String) = "topic/$topicId"
     }
-    object Flashcard : Screen("flashcard/{topicId}?inverted={inverted}&subtopicId={subtopicId}") {
-        fun createRoute(topicId: String, inverted: Boolean = false, subtopicId: String? = null): String {
-            val base = "flashcard/$topicId?inverted=$inverted"
+    object Flashcard : Screen("flashcard/{topicId}?inverted={inverted}&shuffle={shuffle}&subtopicId={subtopicId}") {
+        fun createRoute(
+            topicId: String,
+            inverted: Boolean = false,
+            subtopicId: String? = null,
+            shuffle: Boolean = false
+        ): String {
+            val base = "flashcard/$topicId?inverted=$inverted&shuffle=$shuffle"
             return if (subtopicId != null) "$base&subtopicId=$subtopicId" else base
         }
     }
@@ -75,8 +80,8 @@ fun FlashyNavGraph(navController: NavHostController) {
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
                 },
-                onStudyClick = { topicId ->
-                    navController.navigate(Screen.Flashcard.createRoute(topicId))
+                onStudyClick = { topicId, shuffle ->
+                    navController.navigate(Screen.Flashcard.createRoute(topicId, shuffle = shuffle))
                 }
             )
         }
@@ -102,8 +107,8 @@ fun FlashyNavGraph(navController: NavHostController) {
                 onEditCardClick = { cardId ->
                     navController.navigate(Screen.AddEditCard.createRoute(topicId, cardId))
                 },
-                onStudyClick = { isInverted, subtopicId ->
-                    navController.navigate(Screen.Flashcard.createRoute(topicId, isInverted, subtopicId))
+                onStudyClick = { isInverted, subtopicId, shuffle ->
+                    navController.navigate(Screen.Flashcard.createRoute(topicId, isInverted, subtopicId, shuffle))
                 }
             )
         }
@@ -112,6 +117,7 @@ fun FlashyNavGraph(navController: NavHostController) {
             arguments = listOf(
                 navArgument("topicId") { type = NavType.StringType },
                 navArgument("inverted") { type = NavType.BoolType; defaultValue = false },
+                navArgument("shuffle") { type = NavType.BoolType; defaultValue = false },
                 navArgument("subtopicId") {
                     type = NavType.StringType
                     nullable = true
@@ -122,9 +128,10 @@ fun FlashyNavGraph(navController: NavHostController) {
             val topicId = backStackEntry.arguments?.getString("topicId") ?: ""
             val isInverted = backStackEntry.arguments?.getBoolean("inverted") ?: false
             val subtopicId = backStackEntry.arguments?.getString("subtopicId")
+            val shuffle = backStackEntry.arguments?.getBoolean("shuffle") ?: false
             val viewModel: FlashcardViewModel = viewModel(
-                factory = FlashcardViewModelFactory(repository, topicId, subtopicId),
-                key = "$topicId-${subtopicId ?: "all"}"
+                factory = FlashcardViewModelFactory(repository, topicId, subtopicId, shuffle),
+                key = "$topicId-${subtopicId ?: "all"}-$shuffle"
             )
             FlashcardScreen(
                 viewModel = viewModel,

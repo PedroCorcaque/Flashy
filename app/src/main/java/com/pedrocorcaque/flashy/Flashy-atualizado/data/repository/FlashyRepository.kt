@@ -15,6 +15,8 @@ class FlashyRepository(private val dao: FlashyDao) {
 
     fun getSubtopicsForTopic(topicId: String): Flow<List<Subtopic>> = dao.getSubtopicsForTopic(topicId)
 
+    fun getAllSubtopics(): Flow<List<Subtopic>> = dao.getAllSubtopics()
+
     fun getSubtopicById(subtopicId: String): Flow<Subtopic?> = dao.getSubtopicById(subtopicId)
 
     suspend fun insertSubtopic(subtopic: Subtopic) = dao.insertSubtopic(subtopic)

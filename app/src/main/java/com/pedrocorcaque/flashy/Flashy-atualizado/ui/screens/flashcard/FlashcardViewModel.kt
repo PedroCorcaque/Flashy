@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -38,7 +39,8 @@ data class StudyUiState(
 class FlashcardViewModel(
     private val repository: FlashyRepository,
     private val topicId: String,
-    private val subtopicId: String?
+    private val subtopicId: String?,
+    private val shuffle: Boolean = false
 ) : ViewModel() {
     val topic: StateFlow<Topic?> = repository.getTopicById(topicId)
         .stateIn(
@@ -57,6 +59,18 @@ class FlashcardViewModel(
                 initialValue = null
             )
     }
+
+    /** id do subtópico -> nome, usado para mostrar de qual subtópico é cada card. */
+    val subtopicNames: StateFlow<Map<String, String>> = (
+        if (topicId == ALL_TOPICS_ID) repository.getAllSubtopics()
+        else repository.getSubtopicsForTopic(topicId)
+        )
+        .map { list -> list.associate { it.id to it.name } }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyMap()
+        )
 
     private val _uiState = MutableStateFlow(StudyUiState())
     val uiState: StateFlow<StudyUiState> = _uiState.asStateFlow()
@@ -93,7 +107,10 @@ class FlashcardViewModel(
                 subtopicId == null -> repository.getCardsForTopic(topicId).first()
                 else -> repository.getCardsForSubtopic(subtopicId).first()
             }
-            _uiState.value = StudyUiState(isLoading = false, queue = cards)
+            _uiState.value = StudyUiState(
+                isLoading = false,
+                queue = if (shuffle) cards.shuffled() else cards
+            )
             if (cards.isNotEmpty()) startTimer()
         }
     }
@@ -129,7 +146,7 @@ class FlashcardViewModel(
             } else {
                 StudyUiState(
                     isLoading = false,
-                    queue = state.wrongCards,
+                    queue = if (shuffle) state.wrongCards.shuffled() else state.wrongCards,
                     round = state.round + 1
                 )
             }
@@ -141,12 +158,13 @@ class FlashcardViewModel(
 class FlashcardViewModelFactory(
     private val repository: FlashyRepository,
     private val topicId: String,
-    private val subtopicId: String? = null
+    private val subtopicId: String? = null,
+    private val shuffle: Boolean = false
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(FlashcardViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return FlashcardViewModel(repository, topicId, subtopicId) as T
+            return FlashcardViewModel(repository, topicId, subtopicId, shuffle) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

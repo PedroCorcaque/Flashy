@@ -41,6 +41,7 @@ fun FlashcardScreen(
     val elapsedMs by viewModel.elapsedMs.collectAsState()
     val topic by viewModel.topic.collectAsState()
     val subtopic by viewModel.subtopic.collectAsState()
+    val subtopicNames by viewModel.subtopicNames.collectAsState()
 
     val title = if (topicId == ALL_TOPICS_ID) {
         "Todos os tópicos"
@@ -85,9 +86,17 @@ fun FlashcardScreen(
             )
         }
         else -> {
+            // Estudando "todos" os subtópicos: mostra o subtópico do card que está na tela.
+            val cardSubtopicName = if (subtopic == null) {
+                state.queue.getOrNull(state.currentIndex)?.subtopicId?.let { subtopicNames[it] }
+            } else {
+                null
+            }
+            val studyTitle = listOfNotNull(title.ifEmpty { null }, cardSubtopicName).joinToString(" · ")
+
             StudyContent(
                 state = state,
-                title = title,
+                title = studyTitle,
                 elapsedMs = elapsedMs,
                 isInverted = isInverted,
                 onAnswer = viewModel::answer,

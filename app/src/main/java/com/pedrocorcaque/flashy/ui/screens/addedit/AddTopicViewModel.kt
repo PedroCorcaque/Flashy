@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.pedrocorcaque.flashy.data.model.Topic
 import com.pedrocorcaque.flashy.data.repository.FlashyRepository
 import com.pedrocorcaque.flashy.ui.theme.PhysicsColor
+import com.pedrocorcaque.flashy.ui.theme.TopicIcons
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -24,6 +25,9 @@ class AddTopicViewModel(
     private val _selectedColor = MutableStateFlow(PhysicsColor)
     val selectedColor: StateFlow<Color> = _selectedColor
 
+    private val _selectedIcon = MutableStateFlow(TopicIcons.DEFAULT_KEY)
+    val selectedIcon: StateFlow<String> = _selectedIcon
+
     private var existingTopic: Topic? = null
 
     init {
@@ -33,6 +37,7 @@ class AddTopicViewModel(
                     existingTopic = topic
                     _topicName.value = topic.name
                     _selectedColor.value = Color(topic.colorArgb)
+                    _selectedIcon.value = TopicIcons.resolveKey(topic.iconName, topic.name)
                 }
             }
         }
@@ -46,18 +51,24 @@ class AddTopicViewModel(
         _selectedColor.value = color
     }
 
+    fun onIconSelect(iconKey: String) {
+        _selectedIcon.value = iconKey
+    }
+
     fun saveTopic(onSuccess: () -> Unit) {
         viewModelScope.launch {
             val existing = existingTopic
             val topic = existing?.copy(
                 name = _topicName.value.trim(),
-                colorArgb = _selectedColor.value.toArgb()
+                colorArgb = _selectedColor.value.toArgb(),
+                iconName = _selectedIcon.value
             ) ?: Topic(
                 id = topicId ?: UUID.randomUUID().toString(),
                 name = _topicName.value.trim(),
-                colorArgb = _selectedColor.value.toArgb()
+                colorArgb = _selectedColor.value.toArgb(),
+                iconName = _selectedIcon.value
             )
-            repository.insertTopic(topic)
+            if (existing != null) repository.updateTopic(topic) else repository.insertTopic(topic)
             onSuccess()
         }
     }

@@ -25,15 +25,23 @@ import com.pedrocorcaque.flashy.ui.screens.addedit.AddTopicScreen
 import com.pedrocorcaque.flashy.ui.screens.addedit.AddTopicViewModel
 import com.pedrocorcaque.flashy.ui.screens.addedit.AddTopicViewModelFactory
 import com.pedrocorcaque.flashy.ui.screens.settings.SettingsScreen
+import com.pedrocorcaque.flashy.ui.screens.summary.SummaryScreen
+import com.pedrocorcaque.flashy.ui.screens.summary.SummaryViewModel
+import com.pedrocorcaque.flashy.ui.screens.summary.SummaryViewModelFactory
 
 sealed class Screen(val route: String) {
     object Home : Screen("home")
     object Topic : Screen("topic/{topicId}") {
         fun createRoute(topicId: String) = "topic/$topicId"
     }
-    object Flashcard : Screen("flashcard/{topicId}?inverted={inverted}&subtopicId={subtopicId}") {
-        fun createRoute(topicId: String, inverted: Boolean = false, subtopicId: String? = null): String {
-            val base = "flashcard/$topicId?inverted=$inverted"
+    object Flashcard : Screen("flashcard/{topicId}?inverted={inverted}&shuffle={shuffle}&subtopicId={subtopicId}") {
+        fun createRoute(
+            topicId: String,
+            inverted: Boolean = false,
+            subtopicId: String? = null,
+            shuffle: Boolean = false
+        ): String {
+            val base = "flashcard/$topicId?inverted=$inverted&shuffle=$shuffle"
             return if (subtopicId != null) "$base&subtopicId=$subtopicId" else base
         }
     }
@@ -51,6 +59,7 @@ sealed class Screen(val route: String) {
             if (topicId != null) "addTopic?topicId=$topicId" else "addTopic"
     }
     object Settings : Screen("settings")
+    object Summary : Screen("summary")
 }
 
 @Composable
@@ -75,8 +84,11 @@ fun FlashyNavGraph(navController: NavHostController) {
                 onSettingsClick = {
                     navController.navigate(Screen.Settings.route)
                 },
-                onStudyClick = { topicId ->
-                    navController.navigate(Screen.Flashcard.createRoute(topicId))
+                onSummaryClick = {
+                    navController.navigate(Screen.Summary.route)
+                },
+                onStudyClick = { topicId, shuffle ->
+                    navController.navigate(Screen.Flashcard.createRoute(topicId, shuffle = shuffle))
                 }
             )
         }
@@ -102,8 +114,8 @@ fun FlashyNavGraph(navController: NavHostController) {
                 onEditCardClick = { cardId ->
                     navController.navigate(Screen.AddEditCard.createRoute(topicId, cardId))
                 },
-                onStudyClick = { isInverted, subtopicId ->
-                    navController.navigate(Screen.Flashcard.createRoute(topicId, isInverted, subtopicId))
+                onStudyClick = { isInverted, subtopicId, shuffle ->
+                    navController.navigate(Screen.Flashcard.createRoute(topicId, isInverted, subtopicId, shuffle))
                 }
             )
         }
@@ -112,6 +124,7 @@ fun FlashyNavGraph(navController: NavHostController) {
             arguments = listOf(
                 navArgument("topicId") { type = NavType.StringType },
                 navArgument("inverted") { type = NavType.BoolType; defaultValue = false },
+                navArgument("shuffle") { type = NavType.BoolType; defaultValue = false },
                 navArgument("subtopicId") {
                     type = NavType.StringType
                     nullable = true
@@ -122,9 +135,10 @@ fun FlashyNavGraph(navController: NavHostController) {
             val topicId = backStackEntry.arguments?.getString("topicId") ?: ""
             val isInverted = backStackEntry.arguments?.getBoolean("inverted") ?: false
             val subtopicId = backStackEntry.arguments?.getString("subtopicId")
+            val shuffle = backStackEntry.arguments?.getBoolean("shuffle") ?: false
             val viewModel: FlashcardViewModel = viewModel(
-                factory = FlashcardViewModelFactory(repository, topicId, subtopicId),
-                key = "$topicId-${subtopicId ?: "all"}"
+                factory = FlashcardViewModelFactory(repository, topicId, subtopicId, shuffle),
+                key = "$topicId-${subtopicId ?: "all"}-$shuffle"
             )
             FlashcardScreen(
                 viewModel = viewModel,
@@ -184,6 +198,14 @@ fun FlashyNavGraph(navController: NavHostController) {
                 isEditing = topicId != null
             )
         }
+        composable(Screen.Summary.route) {
+            val viewModel: SummaryViewModel = viewModel(factory = SummaryViewModelFactory(repository))
+            SummaryScreen(
+                viewModel = viewModel,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
         composable(Screen.Settings.route) {
             SettingsScreen(
                 onBackClick = { navController.popBackStack() }

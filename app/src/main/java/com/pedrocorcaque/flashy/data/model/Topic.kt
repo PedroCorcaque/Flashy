@@ -9,7 +9,9 @@ data class Topic(
     val name: String,
     val cardCount: Int = 0,
     val colorArgb: Int,
-    val iconName: String? = null
+    val iconName: String? = null,
+    /** Posição na ordem manual (arrastar na tela inicial). Menor aparece primeiro. */
+    val orderIndex: Int = 0
 )
 
 @Entity(tableName = "subtopics")
@@ -25,5 +27,30 @@ data class Flashcard(
     val topicId: String,
     val front: String,
     val back: String,
-    val subtopicId: String? = null
+    val subtopicId: String? = null,
+    /** Posição na ordem manual (arrastar). Menor aparece primeiro. */
+    val orderIndex: Int = 0
+)
+
+/** Uma resposta (acerto ou erro) dada em uma sessão de estudo. Alimenta o gráfico do Resumo. */
+@Entity(tableName = "study_logs")
+data class StudyLog(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val dayEpoch: Long,
+    val topicId: String,
+    val isCorrect: Boolean
+)
+
+/** Tempo total (ms) contabilizado pelo cronômetro geral em um dia. */
+@Entity(tableName = "study_time")
+data class StudyTime(
+    @PrimaryKey val dayEpoch: Long,
+    val durationMs: Long
+)
+
+/** Resultado agregado de um dia (não é tabela). */
+data class DailyStat(
+    val day: Long,
+    val correct: Int,
+    val wrong: Int
 )

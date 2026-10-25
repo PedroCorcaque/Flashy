@@ -4,8 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -17,13 +17,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.pedrocorcaque.flashy.data.model.Flashcard
-import com.pedrocorcaque.flashy.data.model.Subtopic
 import com.pedrocorcaque.flashy.ui.components.ConfirmDeleteDialog
+import com.pedrocorcaque.flashy.ui.components.ListItemCard
+import com.pedrocorcaque.flashy.ui.components.OptionSwitchRow
+import com.pedrocorcaque.flashy.ui.components.SortSelector
+import com.pedrocorcaque.flashy.ui.components.dragToReorder
+import com.pedrocorcaque.flashy.ui.components.rememberReorderState
 import com.pedrocorcaque.flashy.ui.screens.addedit.FlashyTextField
 import com.pedrocorcaque.flashy.ui.theme.*
 
@@ -36,24 +43,42 @@ fun TopicScreen(
     onEditTopicClick: () -> Unit,
     onAddCardClick: (String?) -> Unit,
     onEditCardClick: (String) -> Unit,
-    onStudyClick: (Boolean, String?) -> Unit
+    onStudyClick: (Boolean, String?, Boolean) -> Unit
 ) {
     val topic by viewModel.topic.collectAsState()
     val cards by viewModel.cards.collectAsState()
     val subtopics by viewModel.subtopics.collectAsState()
+    val subtopicSort by viewModel.subtopicSort.collectAsState()
     val selectedSubtopicId by viewModel.selectedSubtopicId.collectAsState()
-    val selectedSubtopic = subtopics.find { it.id == selectedSubtopicId }
+    val selectedSubtopic = subtopics.find { it.subtopic.id == selectedSubtopicId }?.subtopic
     val selectedSubtopicName = selectedSubtopic?.name
-    
+
     val topicName = topic?.name ?: "Carregando..."
     val cardCount = topic?.cardCount ?: 0
-    
+    val topicColor = topic?.colorArgb?.let { Color(it) } ?: PrimaryPurple
+
     var isInverted by remember { mutableStateOf(false) }
+    var isShuffle by remember { mutableStateOf(false) }
     var showAddSubtopic by remember { mutableStateOf(false) }
     var showEditSubtopic by remember { mutableStateOf(false) }
     var showDeleteSubtopic by remember { mutableStateOf(false) }
     var showDeleteTopic by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
+
+    // Reordenação por arrastar: trabalha numa cópia local; ao soltar, a nova ordem vai para o banco.
+    val listState = rememberLazyListState()
+    val localCards = remember(cards) { cards.toMutableStateList() }
+    val reorderState = rememberReorderState(
+        listState = listState,
+        items = localCards,
+        keyOf = { it.id },
+        onReordered = { ordered -> viewModel.reorderCards(ordered.map { it.id }) }
+    )
+    val edgePx = with(LocalDensity.current) { 72.dp.toPx() }
+    val maxScrollStepPx = with(LocalDensity.current) { 14.dp.toPx() }
+    LaunchedEffect(reorderState.draggedKey) {
+        if (reorderState.draggedKey != null) reorderState.autoScroll(edgePx, maxScrollStepPx)
+    }
 
     Scaffold(
         topBar = {
@@ -102,116 +127,150 @@ fun TopicScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 20.dp)
         ) {
-            TopicHeader(topicName, cardCount, topic?.colorArgb?.let { Color(it) } ?: PrimaryPurple)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            SubtopicChips(
-                subtopics = subtopics,
-                selectedId = selectedSubtopicId,
-                onSelect = { viewModel.selectSubtopic(it) },
-                onAddClick = { showAddSubtopic = true }
-            )
-
-            if (selectedSubtopic != null) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Subtópico: ${selectedSubtopic.name}",
-                        color = TextGray,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f)
+            // Tudo que rola: cabeçalho, subtópicos e cards.
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                item {
+                    TopicHeader(
+                        name = topicName,
+                        count = cardCount,
+                        color = topicColor,
+                        icon = TopicIcons.resolve(topic?.iconName, topicName)
                     )
-                    IconButton(onClick = { showEditSubtopic = true }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Edit, contentDescription = "Editar subtópico", tint = TextGray, modifier = Modifier.size(18.dp))
+                }
+
+                // ---- Subtópicos (mesmo visual dos tópicos da tela inicial) ----
+                item {
+                    SectionHeader(title = "Subtópicos") {
+                        SortSelector(current = subtopicSort, onSelected = viewModel::onSubtopicSortChange)
+                        IconButton(onClick = { showAddSubtopic = true }, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = "Novo subtópico",
+                                tint = PrimaryPurple
+                            )
+                        }
                     }
-                    IconButton(onClick = { showDeleteSubtopic = true }, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "Excluir subtópico", tint = TextGray, modifier = Modifier.size(18.dp))
+                }
+
+                if (subtopics.isEmpty()) {
+                    item {
+                        Text(
+                            text = "Nenhum subtópico ainda. Toque em + para criar.",
+                            color = TextGray,
+                            fontSize = 13.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    items(subtopics, key = { it.subtopic.id }) { entry ->
+                        val isSelected = entry.subtopic.id == selectedSubtopicId
+                        ListItemCard(
+                            title = entry.subtopic.name,
+                            subtitle = "${entry.cardCount} cards",
+                            icon = Icons.Default.Bookmark,
+                            color = topicColor,
+                            selected = isSelected,
+                            onClick = { viewModel.toggleSubtopic(entry.subtopic.id) },
+                            trailing = {
+                                if (isSelected) {
+                                    Row {
+                                        IconButton(onClick = { showEditSubtopic = true }, modifier = Modifier.size(36.dp)) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Editar subtópico", tint = TextGray, modifier = Modifier.size(20.dp))
+                                        }
+                                        IconButton(onClick = { showDeleteSubtopic = true }, modifier = Modifier.size(36.dp)) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Excluir subtópico", tint = TextGray, modifier = Modifier.size(20.dp))
+                                        }
+                                    }
+                                } else {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = TextGray
+                                    )
+                                }
+                            }
+                        )
+                    }
+                }
+
+                // ---- Cards ----
+                item {
+                    Column {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SectionHeader(
+                            title = if (selectedSubtopicName != null) "Cards · $selectedSubtopicName" else "Cards"
+                        )
+                        if (localCards.size > 1) {
+                            Text(
+                                text = "Segure e arraste um card para reordenar",
+                                color = TextGray,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+
+                if (cards.isEmpty()) {
+                    item {
+                        Text(
+                            text = "Nenhum card aqui ainda.",
+                            color = TextGray,
+                            fontSize = 13.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    items(localCards, key = { it.id }) { card ->
+                        val isDragging = reorderState.draggedKey == card.id
+                        TopicCardItem(
+                            card = card,
+                            subtitle = subtopics.find { it.subtopic.id == card.subtopicId }?.subtopic?.name ?: "Ver detalhes",
+                            onClick = { onEditCardClick(card.id) },
+                            // O gesto vem primeiro na cadeia: assim ele não "anda" junto com o item arrastado.
+                            modifier = Modifier
+                                .dragToReorder(reorderState, card.id)
+                                .then(
+                                    if (isDragging) {
+                                        Modifier
+                                            .zIndex(1f)
+                                            .graphicsLayer {
+                                                translationY = reorderState.draggedOffsetY()
+                                                scaleX = 1.03f
+                                                scaleY = 1.03f
+                                                alpha = 0.95f
+                                            }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                        )
                     }
                 }
             }
 
-            if (showEditSubtopic && selectedSubtopic != null) {
-                SubtopicNameDialog(
-                    title = "Editar subtópico",
-                    initialName = selectedSubtopic.name,
-                    onDismiss = { showEditSubtopic = false },
-                    onConfirm = { name ->
-                        viewModel.renameSubtopic(selectedSubtopic, name)
-                        showEditSubtopic = false
-                    }
-                )
-            }
+            // ---- Controles fixos embaixo ----
+            OptionSwitchRow(
+                text = "Inverter cartas (Verso primeiro)",
+                checked = isInverted,
+                onCheckedChange = { isInverted = it }
+            )
 
-            if (showDeleteSubtopic && selectedSubtopic != null) {
-                ConfirmDeleteDialog(
-                    title = "Excluir subtópico?",
-                    message = "Os cards de \"${selectedSubtopic.name}\" não serão apagados; eles ficarão sem subtópico.",
-                    onConfirm = {
-                        viewModel.deleteSubtopic(selectedSubtopic.id)
-                        showDeleteSubtopic = false
-                    },
-                    onDismiss = { showDeleteSubtopic = false }
-                )
-            }
+            OptionSwitchRow(
+                text = "Modo aleatório",
+                checked = isShuffle,
+                onCheckedChange = { isShuffle = it }
+            )
 
-            if (showDeleteTopic) {
-                ConfirmDeleteDialog(
-                    title = "Excluir tópico?",
-                    message = "O tópico \"$topicName\", com seus $cardCount cards e subtópicos, será apagado permanentemente.",
-                    onConfirm = {
-                        showDeleteTopic = false
-                        viewModel.deleteTopic(onDone = onBackClick)
-                    },
-                    onDismiss = { showDeleteTopic = false }
-                )
-            }
-
-            if (showAddSubtopic) {
-                SubtopicNameDialog(
-                    title = "Novo subtópico",
-                    onDismiss = { showAddSubtopic = false },
-                    onConfirm = { name ->
-                        viewModel.addSubtopic(name)
-                        showAddSubtopic = false
-                    }
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Inverter cartas (Verso primeiro)",
-                    color = Color.White,
-                    fontSize = 14.sp
-                )
-                Switch(
-                    checked = isInverted,
-                    onCheckedChange = { isInverted = it },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = PrimaryPurple,
-                        checkedTrackColor = PrimaryPurple.copy(alpha = 0.5f),
-                        uncheckedThumbColor = TextGray,
-                        uncheckedTrackColor = SurfaceColor
-                    )
-                )
-            }
-            
             Button(
-                onClick = { onStudyClick(isInverted, selectedSubtopicId) },
+                onClick = { onStudyClick(isInverted, selectedSubtopicId, isShuffle) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryPurple),
                 shape = RoundedCornerShape(12.dp),
@@ -227,24 +286,9 @@ fun TopicScreen(
                     maxLines = 1
                 )
             }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.weight(1f)
-            ) {
-                items(cards) { card ->
-                    TopicCardItem(
-                        card = card,
-                        subtitle = subtopics.find { it.id == card.subtopicId }?.name ?: "Ver detalhes",
-                        onClick = { onEditCardClick(card.id) }
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             OutlinedButton(
                 onClick = { onAddCardClick(selectedSubtopicId) },
                 modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
@@ -257,20 +301,89 @@ fun TopicScreen(
                 Text("Adicionar card")
             }
         }
+
+        // ---- Diálogos ----
+        if (showEditSubtopic && selectedSubtopic != null) {
+            SubtopicNameDialog(
+                title = "Editar subtópico",
+                initialName = selectedSubtopic.name,
+                onDismiss = { showEditSubtopic = false },
+                onConfirm = { name ->
+                    viewModel.renameSubtopic(selectedSubtopic, name)
+                    showEditSubtopic = false
+                }
+            )
+        }
+
+        if (showDeleteSubtopic && selectedSubtopic != null) {
+            ConfirmDeleteDialog(
+                title = "Excluir subtópico?",
+                message = "Os cards de \"${selectedSubtopic.name}\" não serão apagados; eles ficarão sem subtópico.",
+                onConfirm = {
+                    viewModel.deleteSubtopic(selectedSubtopic.id)
+                    showDeleteSubtopic = false
+                },
+                onDismiss = { showDeleteSubtopic = false }
+            )
+        }
+
+        if (showDeleteTopic) {
+            ConfirmDeleteDialog(
+                title = "Excluir tópico?",
+                message = "O tópico \"$topicName\", com seus $cardCount cards e subtópicos, será apagado permanentemente.",
+                onConfirm = {
+                    showDeleteTopic = false
+                    viewModel.deleteTopic(onDone = onBackClick)
+                },
+                onDismiss = { showDeleteTopic = false }
+            )
+        }
+
+        if (showAddSubtopic) {
+            SubtopicNameDialog(
+                title = "Novo subtópico",
+                onDismiss = { showAddSubtopic = false },
+                onConfirm = { name ->
+                    viewModel.addSubtopic(name)
+                    showAddSubtopic = false
+                }
+            )
+        }
     }
 }
 
 @Composable
-fun TopicHeader(name: String, count: Int, color: Color) {
+private fun SectionHeader(
+    title: String,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
+        )
+        actions()
+    }
+}
+
+@Composable
+fun TopicHeader(name: String, count: Int, color: Color, icon: ImageVector) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             modifier = Modifier
                 .size(100.dp)
                 .clip(RoundedCornerShape(24.dp))
-                .background(SurfaceColor),
+                .background(color.copy(alpha = 0.25f)),
             contentAlignment = Alignment.Center
         ) {
-            Text("🪐", fontSize = 60.sp)
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(56.dp))
         }
         
         Spacer(modifier = Modifier.height(16.dp))
@@ -293,9 +406,14 @@ fun TopicHeader(name: String, count: Int, color: Color) {
 }
 
 @Composable
-fun TopicCardItem(card: Flashcard, subtitle: String, onClick: () -> Unit) {
+fun TopicCardItem(
+    card: Flashcard,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
@@ -337,70 +455,11 @@ fun TopicCardItem(card: Flashcard, subtitle: String, onClick: () -> Unit) {
                 )
             }
             Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
+                Icons.Default.DragHandle,
+                contentDescription = "Segure e arraste para reordenar",
                 tint = TextGray
             )
         }
-    }
-}
-
-@Composable
-fun SubtopicChips(
-    subtopics: List<Subtopic>,
-    selectedId: String?,
-    onSelect: (String?) -> Unit,
-    onAddClick: () -> Unit
-) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            SubtopicChip(label = "Todos", selected = selectedId == null, onClick = { onSelect(null) })
-        }
-        items(subtopics) { subtopic ->
-            SubtopicChip(
-                label = subtopic.name,
-                selected = selectedId == subtopic.id,
-                onClick = { onSelect(subtopic.id) }
-            )
-        }
-        item {
-            Surface(
-                modifier = Modifier.clickable { onAddClick() },
-                shape = RoundedCornerShape(50),
-                color = Color.Transparent,
-                border = androidx.compose.foundation.BorderStroke(1.dp, TextGray.copy(alpha = 0.5f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = TextGray, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Subtópico", color = TextGray, fontSize = 13.sp)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SubtopicChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier.clickable { onClick() },
-        shape = RoundedCornerShape(50),
-        color = if (selected) PrimaryPurple else SurfaceColor
-    ) {
-        Text(
-            text = label,
-            color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-        )
     }
 }
 
